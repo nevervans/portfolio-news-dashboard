@@ -1,3 +1,4 @@
+from urllib.parse import quote
 import streamlit as st
 import feedparser
 from datetime import datetime
@@ -8,7 +9,13 @@ def clean_ticker(ticker):
 
 def fetch_news_for_stock(stock):
     query = f"{stock} NSE OR {stock} BSE"
-    rss_url = f"https://news.google.com/rss/search?q={query}&hl=en-IN&gl=IN&ceid=IN:en"
+    encoded_query = quote(query)
+
+    rss_url = (
+        f"https://news.google.com/rss/search?"
+        f"q={encoded_query}&hl=en-IN&gl=IN&ceid=IN:en"
+    )
+
     feed = feedparser.parse(rss_url)
 
     articles = []
