@@ -1,3 +1,6 @@
 streamlit
 feedparser
 pandas
+yfinance
+vaderSentiment
+openpyxl
