@@ -21,14 +21,16 @@ st.caption("AI-powered portfolio intelligence dashboard")
 def clean_ticker(ticker):
     return ticker.strip().upper()
 
-
 @st.cache_data(ttl=600)
 def fetch_news(stock):
 
     query = f"{stock} stock OR {stock} NSE OR {stock} BSE India"
     encoded_query = quote(query)
 
-    rss_url = f"https://news.google.com/rss/search?q={encoded_query}&hl=en-IN&gl=IN&ceid=IN:en"
+    rss_url = (
+        f"https://news.google.com/rss/search?"
+        f"q={encoded_query}&hl=en-IN&gl=IN&ceid=IN:en"
+    )
 
     feed = feedparser.parse(rss_url)
 
@@ -75,7 +77,7 @@ def tag_news(title):
     if "downgrade" in t:
         return "⬇️ Downgrade"
 
-    if "rbi" in t or "regulatory" in t:
+    if "regulatory" in t or "rbi" in t:
         return "⚖️ Regulation"
 
     return ""
@@ -111,80 +113,38 @@ def parse_date(date_str):
 
 
 # -----------------------------
-# AI Style Summary Generator
-# -----------------------------
-
-def summarize_news(title):
-
-    words = title.split()
-
-    if len(words) <= 20:
-        return title
-
-    return " ".join(words[:20]) + "..."
-
-
-# -----------------------------
-# Risk Detection
-# -----------------------------
-
-def detect_risk(title):
-
-    risk_words = [
-        "downgrade",
-        "lawsuit",
-        "fraud",
-        "regulatory",
-        "probe",
-        "decline",
-        "fall",
-        "loss",
-        "penalty"
-    ]
-
-    title_lower = title.lower()
-
-    for r in risk_words:
-
-        if r in title_lower:
-            return True
-
-    return False
-
-
-# -----------------------------
 # Sidebar
 # -----------------------------
 
 st.sidebar.header("Portfolio Input")
 
-upload = st.sidebar.file_uploader(
-    "Upload Portfolio (CSV or Excel)",
-    type=["csv","xlsx"]
-)
+upload = st.sidebar.file_uploader("Upload Portfolio (CSV or Excel)", type=["csv","xlsx"])
 
 manual = st.sidebar.text_input(
-    "Or search stocks manually",
+    "Or search stocks manually (comma separated)",
     placeholder="RELIANCE, TCS, INFY"
 )
 
 build = st.sidebar.button("Build Dashboard")
 
-tickers = []
 
 # -----------------------------
-# Extract tickers
+# Extract Tickers
 # -----------------------------
+
+tickers = []
 
 if upload:
 
     if upload.name.endswith(".csv"):
-        df_port = pd.read_csv(upload)
+        df = pd.read_csv(upload)
 
     else:
-        df_port = pd.read_excel(upload)
+        df = pd.read_excel(upload)
 
-    tickers = df_port.iloc[:,0].astype(str).apply(clean_ticker).tolist()
+    st.sidebar.success("Portfolio uploaded")
+
+    tickers = df.iloc[:,0].astype(str).apply(clean_ticker).tolist()
 
 elif manual:
 
@@ -192,24 +152,24 @@ elif manual:
 
 
 # -----------------------------
-# Build dashboard
+# Build Dashboard
 # -----------------------------
 
 if build and tickers:
 
+    st.subheader("Your Portfolio News")
+
     all_news = []
 
-    with st.spinner("Fetching portfolio news..."):
+    with st.spinner("Fetching news..."):
 
         with ThreadPoolExecutor() as executor:
-
             results = executor.map(fetch_news, tickers)
 
         for r in results:
             all_news.extend(r)
 
     if not all_news:
-
         st.warning("No news found")
 
     else:
@@ -222,51 +182,8 @@ if build and tickers:
 
         df["Tag"] = df["Title"].apply(tag_news)
 
-        df["Summary"] = df["Title"].apply(summarize_news)
-
-        df["Risk"] = df["Title"].apply(detect_risk)
-
         df = df.sort_values(by="ParsedDate", ascending=False)
 
-        # -----------------------------
-        # Portfolio Alerts
-        # -----------------------------
-
-        st.subheader("⚠️ Portfolio Alerts")
-
-        alerts = df[df["Risk"] == True]
-
-        if alerts.empty:
-
-            st.write("No major risk alerts detected.")
-
-        else:
-
-            for _, row in alerts.head(5).iterrows():
-
-                st.warning(f"{row['Stock']}: {row['Title']}")
-
-        st.divider()
-
-        # -----------------------------
-        # News Heatmap
-        # -----------------------------
-
-        st.subheader("🔥 Portfolio News Activity")
-
-        counts = df.groupby("Stock").size().sort_values(ascending=False)
-
-        for stock, count in counts.items():
-
-            bars = "█" * min(count,10)
-
-            st.write(f"{stock}  {bars}  ({count})")
-
-        st.divider()
-
-        # -----------------------------
-        # Stock News Sections
-        # -----------------------------
 
         for stock in tickers:
 
@@ -274,12 +191,14 @@ if build and tickers:
 
             if price:
 
-                arrow = "▲" if change >= 0 else "▼"
+                if change >= 0:
+                    change_text = f"▲ {change}%"
+                else:
+                    change_text = f"▼ {change}%"
 
-                st.header(f"{stock} — ₹{price} {arrow}{change}%")
+                st.header(f"{stock} — ₹{price} ({change_text})")
 
             else:
-
                 st.header(stock)
 
             stock_df = df[df["Stock"] == stock]
@@ -300,12 +219,10 @@ if build and tickers:
                             f"{row['Source']} | {row['Published']} | {row['Sentiment']} {row['Tag']}"
                         )
 
-                        st.write(f"**Summary:** {row['Summary']}")
-
                         st.markdown(f"[Read Article]({row['Link']})")
 
                         st.divider()
 
 else:
 
-    st.info("Upload portfolio or enter tickers to build your dashboard.")
+    st.info("Upload portfolio or enter tickers to build your dashboard")
