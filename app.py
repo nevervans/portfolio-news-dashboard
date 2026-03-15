@@ -195,11 +195,11 @@ if build and tickers:
                     change_text = f"▲ {change}%"
                 else:
                     change_text = f"▼ {change}%"
-screener_url = f"https://www.screener.in/company/{stock}/"
-tickertape_url = f"https://www.tickertape.in/stocks/{stock.lower()}"
+                screener_url = f"https://www.screener.in/company/{stock}/"
+                tickertape_url = f"https://www.tickertape.in/stocks/{stock.lower()}"
 
-st.markdown(f"[📊 View Fundamentals on Screener]({screener_url})")
-st.markdown(f"[📈 View Full Analysis on Tickertape]({tickertape_url})")
+                st.markdown(f"[📊 View Fundamentals on Screener]({screener_url})")
+                st.markdown(f"[📈 View Full Analysis on Tickertape]({tickertape_url})")
 
                 st.header(f"{stock} — ₹{price} ({change_text})")
 
