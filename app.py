@@ -12,14 +12,15 @@ analyzer = SentimentIntensityAnalyzer()
 st.set_page_config(page_title="PortfolioPulse", layout="wide")
 
 st.title("📊 PortfolioPulse")
-st.caption("AI-powered portfolio intelligence dashboard")
+st.caption("AI-powered portfolio intelligence dashboard for retail investors")
 
-# -----------------------------
+# -------------------------
 # Helper Functions
-# -----------------------------
+# -------------------------
 
 def clean_ticker(ticker):
     return ticker.strip().upper()
+
 
 @st.cache_data(ttl=600)
 def fetch_news(stock):
@@ -27,10 +28,7 @@ def fetch_news(stock):
     query = f"{stock} stock OR {stock} NSE OR {stock} BSE India"
     encoded_query = quote(query)
 
-    rss_url = (
-        f"https://news.google.com/rss/search?"
-        f"q={encoded_query}&hl=en-IN&gl=IN&ceid=IN:en"
-    )
+    rss_url = f"https://news.google.com/rss/search?q={encoded_query}&hl=en-IN&gl=IN&ceid=IN:en"
 
     feed = feedparser.parse(rss_url)
 
@@ -77,15 +75,57 @@ def tag_news(title):
     if "downgrade" in t:
         return "⬇️ Downgrade"
 
-    if "regulatory" in t or "rbi" in t:
+    if "rbi" in t or "regulatory" in t:
         return "⚖️ Regulation"
 
     return ""
 
 
+def summarize_news(title):
+
+    words = title.split()
+
+    if len(words) <= 20:
+        return title
+
+    return " ".join(words[:20]) + "..."
+
+
+def detect_risk(title):
+
+    risk_words = [
+        "downgrade",
+        "fraud",
+        "probe",
+        "penalty",
+        "lawsuit",
+        "decline",
+        "loss",
+        "regulatory"
+    ]
+
+    t = title.lower()
+
+    for word in risk_words:
+        if word in t:
+            return True
+
+    return False
+
+
+def parse_date(date_str):
+
+    try:
+        return datetime.strptime(date_str, "%a, %d %b %Y %H:%M:%S %Z")
+
+    except:
+        return None
+
+
 def get_price(stock):
 
     try:
+
         ticker = yf.Ticker(f"{stock}.NS")
 
         data = ticker.history(period="1d")
@@ -100,77 +140,89 @@ def get_price(stock):
         return price, change
 
     except:
+
         return None, None
 
 
-def parse_date(date_str):
+def get_price_history(stock, period):
 
     try:
-        return datetime.strptime(date_str, "%a, %d %b %Y %H:%M:%S %Z")
+
+        ticker = yf.Ticker(f"{stock}.NS")
+
+        history = ticker.history(period=period)
+
+        return history
 
     except:
+
         return None
 
 
-# -----------------------------
+# -------------------------
 # Sidebar
-# -----------------------------
+# -------------------------
 
 st.sidebar.header("Portfolio Input")
 
-upload = st.sidebar.file_uploader("Upload Portfolio (CSV or Excel)", type=["csv","xlsx"])
+upload = st.sidebar.file_uploader(
+    "Upload Portfolio (CSV or Excel)",
+    type=["csv","xlsx"]
+)
 
 manual = st.sidebar.text_input(
-    "Or search stocks manually (comma separated)",
+    "Or enter tickers manually",
     placeholder="RELIANCE, TCS, INFY"
+)
+
+period_choice = st.sidebar.selectbox(
+    "Select price chart period",
+    ["1mo","6mo","1y","5y"],
+    index=2
 )
 
 build = st.sidebar.button("Build Dashboard")
 
-
-# -----------------------------
-# Extract Tickers
-# -----------------------------
-
 tickers = []
+
+# -------------------------
+# Extract Tickers
+# -------------------------
 
 if upload:
 
     if upload.name.endswith(".csv"):
-        df = pd.read_csv(upload)
-
+        df_port = pd.read_csv(upload)
     else:
-        df = pd.read_excel(upload)
+        df_port = pd.read_excel(upload)
 
-    st.sidebar.success("Portfolio uploaded")
-
-    tickers = df.iloc[:,0].astype(str).apply(clean_ticker).tolist()
+    tickers = df_port.iloc[:,0].astype(str).apply(clean_ticker).tolist()
 
 elif manual:
 
     tickers = [clean_ticker(t) for t in manual.split(",") if t.strip()]
 
 
-# -----------------------------
+# -------------------------
 # Build Dashboard
-# -----------------------------
+# -------------------------
 
 if build and tickers:
 
-    st.subheader("Your Portfolio News")
-
     all_news = []
 
-    with st.spinner("Fetching news..."):
+    with st.spinner("Fetching portfolio news..."):
 
         with ThreadPoolExecutor() as executor:
+
             results = executor.map(fetch_news, tickers)
 
         for r in results:
             all_news.extend(r)
 
     if not all_news:
-        st.warning("No news found")
+
+        st.warning("No news found.")
 
     else:
 
@@ -182,8 +234,35 @@ if build and tickers:
 
         df["Tag"] = df["Title"].apply(tag_news)
 
+        df["Summary"] = df["Title"].apply(summarize_news)
+
+        df["Risk"] = df["Title"].apply(detect_risk)
+
         df = df.sort_values(by="ParsedDate", ascending=False)
 
+        # -------------------------
+        # Risk Alerts
+        # -------------------------
+
+        st.subheader("⚠️ Portfolio Alerts")
+
+        alerts = df[df["Risk"] == True]
+
+        if alerts.empty:
+
+            st.write("No major risk alerts detected.")
+
+        else:
+
+            for _, row in alerts.head(5).iterrows():
+
+                st.warning(f"{row['Stock']}: {row['Title']}")
+
+        st.divider()
+
+        # -------------------------
+        # Stock Sections
+        # -------------------------
 
         for stock in tickers:
 
@@ -191,26 +270,41 @@ if build and tickers:
 
             if price:
 
-                if change >= 0:
-                    change_text = f"▲ {change}%"
-                else:
-                    change_text = f"▼ {change}%"
-                screener_url = f"https://www.screener.in/company/{stock}/"
-                tickertape_url = f"https://www.tickertape.in/stocks/{stock.lower()}"
+                arrow = "▲" if change >= 0 else "▼"
 
-                st.markdown(f"[📊 View Fundamentals on Screener]({screener_url})")
-                st.markdown(f"[📈 View Full Analysis on Tickertape]({tickertape_url})")
-
-                st.header(f"{stock} — ₹{price} ({change_text})")
+                st.header(f"{stock} — ₹{price} {arrow}{change}%")
 
             else:
+
                 st.header(stock)
+
+            # Fundamentals links
+
+            screener_url = f"https://www.screener.in/company/{stock}/"
+            tickertape_url = f"https://www.tickertape.in/stocks/{stock.lower()}"
+
+            col1, col2 = st.columns(2)
+
+            col1.markdown(f"[📊 View Fundamentals on Screener]({screener_url})")
+            col2.markdown(f"[📈 View Full Analysis on Tickertape]({tickertape_url})")
+
+            # Price chart
+
+            history = get_price_history(stock, period_choice)
+
+            if history is not None and not history.empty:
+
+                st.subheader("📈 Price Chart")
+
+                st.line_chart(history["Close"])
+
+            st.subheader("Latest News")
 
             stock_df = df[df["Stock"] == stock]
 
             if stock_df.empty:
 
-                st.write("No recent news")
+                st.write("No recent news.")
 
             else:
 
@@ -224,10 +318,12 @@ if build and tickers:
                             f"{row['Source']} | {row['Published']} | {row['Sentiment']} {row['Tag']}"
                         )
 
+                        st.write(f"**Summary:** {row['Summary']}")
+
                         st.markdown(f"[Read Article]({row['Link']})")
 
                         st.divider()
 
 else:
 
-    st.info("Upload portfolio or enter tickers to build your dashboard")
+    st.info("Upload a portfolio or enter tickers to build your dashboard.")
