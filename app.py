@@ -4,6 +4,7 @@ import feedparser
 from urllib.parse import quote
 from datetime import datetime
 import yfinance as yf
+import time
 from concurrent.futures import ThreadPoolExecutor
 from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
 
@@ -144,6 +145,7 @@ def get_price(stock):
         return None, None
 
 
+@st.cache_data(ttl=600)
 def get_price_history(stock, period):
 
     try:
@@ -152,10 +154,12 @@ def get_price_history(stock, period):
 
         history = ticker.history(period=period)
 
+        if history.empty:
+            return None
+
         return history
 
     except:
-
         return None
 
 
@@ -292,11 +296,12 @@ if build and tickers:
 
             history = get_price_history(stock, period_choice)
 
-            if history is not None and not history.empty:
-
+            if history is None or history.empty:
+                st.write("Price chart unavailable.")
+            else:
                 st.subheader("📈 Price Chart")
-
                 st.line_chart(history["Close"])
+            time.sleep(0.5)
 
             st.subheader("Latest News")
 
